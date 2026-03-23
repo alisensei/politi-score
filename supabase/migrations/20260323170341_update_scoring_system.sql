@@ -190,6 +190,7 @@ group by p.id;
 
 create or replace view scores_computed as
 select
+  p.id                          as id,
   p.id                          as politician_id,
   p.full_name,
   p.slug,
