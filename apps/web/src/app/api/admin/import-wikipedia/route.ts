@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenAI, Type, FunctionCallingConfigMode } from '@google/genai'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export const runtime = 'nodejs'
@@ -34,36 +34,37 @@ RÈGLES STRICTES :
 6. En cas de doute sur la sévérité, choisis la moins grave (présomption d'innocence).
 7. Une affaire sans condamnation définitive ne peut PAS être tagguée "condamne" — utilise "mis_en_examen" ou "soupcon".
 8. Concentre-toi sur les sections "Affaires", "Controverses", "Polémiques", "Procédures judiciaires", "Polémiques judiciaires", "Critiques", "Mises en cause", "Mensonges". Ignore biographie/carrière/déclarations politiques générales.
-9. Si aucun fait documenté n'est trouvé, retourne items: [].`
+9. Si aucun fait documenté n'est trouvé, retourne items: [].
 
-const EXTRACTION_TOOL = {
+Appelle toujours la fonction submit_extraction pour fournir le résultat.`
+
+const EXTRACTION_FUNCTION = {
   name: 'submit_extraction',
   description: 'Soumet la liste des faits extraits depuis le wikitext.',
-  input_schema: {
-    type: 'object' as const,
+  parameters: {
+    type: Type.OBJECT,
     properties: {
       items: {
-        type: 'array',
+        type: Type.ARRAY,
         items: {
-          type: 'object',
+          type: Type.OBJECT,
           properties: {
             category: {
-              type: 'string',
+              type: Type.STRING,
               enum: ['affairs', 'lies', 'conflicts', 'patrimoine', 'financement'],
             },
-            title: { type: 'string', maxLength: 80 },
-            description: { type: 'string' },
-            severity: { type: 'string' },
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            severity: { type: Type.STRING },
             sources: {
-              type: 'array',
-              minItems: 1,
+              type: Type.ARRAY,
               items: {
-                type: 'object',
+                type: Type.OBJECT,
                 properties: {
-                  label: { type: 'string' },
-                  url: { type: 'string' },
+                  label: { type: Type.STRING },
+                  url: { type: Type.STRING },
                   source_type: {
-                    type: 'string',
+                    type: Type.STRING,
                     enum: ['presse', 'legal', 'officiel', 'hatvp', 'parquet', 'autre'],
                   },
                 },
@@ -102,7 +103,9 @@ async function fetchWikipediaArticle(slug: string): Promise<string | null> {
   const url = `https://fr.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(
     slug
   )}&format=json&prop=wikitext&redirects=1`
-  const res = await fetch(url, { headers: { 'User-Agent': 'politi-score/1.0 (contact: admin@politi-score.fr)' } })
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'politi-score/1.0 (contact: admin@politi-score.fr)' },
+  })
   if (!res.ok) return null
   const data = await res.json()
   return data.parse?.wikitext?.['*'] ?? null
@@ -133,9 +136,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'ANTHROPIC_API_KEY manquante côté serveur.' },
+        { error: 'GEMINI_API_KEY manquante côté serveur.' },
         { status: 500 }
       )
     }
@@ -162,46 +165,44 @@ export async function POST(request: Request) {
 
     const trimmed = trimToInterestingSections(wikitext)
 
-    const anthropic = new Anthropic()
-    let message
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+
+    let response
     try {
-      message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: [
-          { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-        ],
-        tools: [EXTRACTION_TOOL],
-        tool_choice: { type: 'tool', name: 'submit_extraction' },
-        messages: [
-          {
-            role: 'user',
-            content: `Voici le wikitext (sections potentiellement pertinentes uniquement). Extrais les faits documentés via la fonction submit_extraction.\n\n${trimmed}`,
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Voici le wikitext (sections pertinentes uniquement). Extrais les faits documentés via la fonction submit_extraction.\n\n${trimmed}`,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          tools: [{ functionDeclarations: [EXTRACTION_FUNCTION] }],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: FunctionCallingConfigMode.ANY,
+              allowedFunctionNames: ['submit_extraction'],
+            },
           },
-        ],
+        },
       })
     } catch (err) {
-      const e = err as { status?: number; message?: string; error?: { message?: string } }
+      const e = err as { status?: number; message?: string }
       return NextResponse.json(
-        {
-          error: `Anthropic API: ${e.error?.message || e.message || 'erreur inconnue'}`,
-          status: e.status,
-        },
+        { error: `Gemini API: ${e.message || 'erreur inconnue'}`, status: e.status },
         { status: 502 }
       )
     }
 
-    const toolUse = message.content.find((b) => b.type === 'tool_use')
-    if (!toolUse || toolUse.type !== 'tool_use') {
+    const calls = response.functionCalls
+    if (!calls || calls.length === 0) {
       return NextResponse.json(
-        { error: 'Réponse LLM sans tool_use', raw: message.content },
+        { error: 'Réponse LLM sans function call', raw: response.text ?? null },
         { status: 500 }
       )
     }
 
+    const args = calls[0].args as { items: unknown[] }
     return NextResponse.json({
-      items: (toolUse.input as { items: unknown[] }).items,
-      usage: message.usage,
+      items: args.items,
+      usage: response.usageMetadata,
       wikipediaSlug,
     })
   } catch (err) {
