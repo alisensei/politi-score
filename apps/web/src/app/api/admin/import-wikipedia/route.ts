@@ -112,9 +112,9 @@ async function fetchWikipediaArticle(slug: string): Promise<string | null> {
 }
 
 function trimToInterestingSections(wikitext: string): string {
-  // Cap total input to ~120k chars (~30k tokens) — Node + Fluid Compute gives 60s.
-  const PER_SECTION = 24000
-  const MAX_TOTAL = 120000
+  // Cap total input to ~30k chars to diagnose timeout. Will increase once root cause found.
+  const PER_SECTION = 8000
+  const MAX_TOTAL = 30000
 
   const sectionRegex = /==+\s*(Affaires?|Controverses?|Pol[ée]miques?|Proc[ée]dures? judiciaires?|Mises? en cause|Critiques?|Mensonges?|Scandales?|Affaires? judiciaires?)[^=]*==+/gi
   const matches: { start: number }[] = []
@@ -138,8 +138,12 @@ function trimToInterestingSections(wikitext: string): string {
 }
 
 export async function POST(request: Request) {
+  const t0 = Date.now()
+  const stamp = (label: string) => console.log(`[import-wikipedia] +${Date.now() - t0}ms ${label}`)
   try {
+    stamp('start')
     const auth = await assertModerator()
+    stamp(`auth (ok=${auth.ok})`)
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
@@ -164,6 +168,7 @@ export async function POST(request: Request) {
     }
 
     const wikitext = await fetchWikipediaArticle(wikipediaSlug)
+    stamp(`wiki fetch (chars=${wikitext?.length ?? 0})`)
     if (!wikitext) {
       return NextResponse.json(
         { error: `Article Wikipedia introuvable : « ${wikipediaSlug} »` },
@@ -172,11 +177,13 @@ export async function POST(request: Request) {
     }
 
     const trimmed = trimToInterestingSections(wikitext)
+    stamp(`trim (chars=${trimmed.length})`)
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
     let response
     try {
+      stamp('gemini call start')
       response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Voici le wikitext (sections pertinentes uniquement). Extrais les faits documentés via la fonction submit_extraction.\n\n${trimmed}`,
@@ -193,11 +200,13 @@ export async function POST(request: Request) {
       })
     } catch (err) {
       const e = err as { status?: number; message?: string }
+      stamp(`gemini error: ${e.message}`)
       return NextResponse.json(
         { error: `Gemini API: ${e.message || 'erreur inconnue'}`, status: e.status },
         { status: 502 }
       )
     }
+    stamp('gemini call done')
 
     const calls = response.functionCalls
     if (!calls || calls.length === 0) {
