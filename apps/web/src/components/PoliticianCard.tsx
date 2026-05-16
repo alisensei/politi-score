@@ -1,5 +1,6 @@
 import type { PoliticianWithScores, Grade } from '@politi-score/types'
 import { GRADE_COLORS } from '@politi-score/types'
+import PoliticianPhoto from './PoliticianPhoto'
 
 function GradeBadge({ grade, size = 'sm' }: { grade: Grade; size?: 'sm' | 'lg' }) {
   const dim = size === 'lg' ? 44 : 36
@@ -35,19 +36,12 @@ export default function PoliticianCard({
     >
       {/* Photo */}
       <div className="relative h-48 bg-gray-100">
-        {p.photo_url ? (
-          <img
-            src={p.photo_url}
-            alt={p.full_name}
-            className="w-full h-full object-cover object-top"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-200">
-            <span className="text-4xl font-black text-gray-400" style={{ fontFamily: 'var(--font-barlow-condensed)' }}>
-              {p.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-            </span>
-          </div>
-        )}
+        <PoliticianPhoto
+          src={p.photo_url}
+          name={p.full_name}
+          className="w-full h-full"
+          initialsFontSize="2.25rem"
+        />
         {/* Party badge */}
         <div className="absolute top-2 left-2 bg-black/80 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded">
           {p.party}

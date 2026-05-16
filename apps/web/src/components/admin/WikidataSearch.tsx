@@ -125,6 +125,7 @@ export default function WikidataSearch({
   const [searching, setSearching] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState('')
+  const [missing, setMissing] = useState<string[]>([])
 
   useEffect(() => {
     if (query.trim().length < 3) {
@@ -149,8 +150,15 @@ export default function WikidataSearch({
   const handlePick = async (qid: string) => {
     setFetching(true)
     setError('')
+    setMissing([])
     try {
       const data = await buildPrefill(qid)
+      const m: string[] = []
+      if (!data.photo_url) m.push('photo')
+      if (!data.party) m.push('parti')
+      if (!data.role) m.push('fonction')
+      if (!data.mandate_start) m.push('début de mandat')
+      setMissing(m)
       onSelect(data)
       setQuery('')
       setResults([])
@@ -186,6 +194,12 @@ export default function WikidataSearch({
 
       {error && (
         <div className="mt-2 text-xs font-bold text-red-600">{error}</div>
+      )}
+
+      {missing.length > 0 && (
+        <div className="mt-2 text-xs bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded-lg">
+          Wikidata n'a pas fourni : <strong>{missing.join(', ')}</strong>. À compléter à la main ci-dessous.
+        </div>
       )}
 
       {results.length > 0 && (

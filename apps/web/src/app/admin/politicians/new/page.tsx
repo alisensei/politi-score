@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-client'
 import { useRouter } from 'next/navigation'
 import WikidataSearch, { type WikidataPrefill } from '@/components/admin/WikidataSearch'
+import PoliticianPhoto from '@/components/PoliticianPhoto'
 
 const LEVELS = ['Gouvernement', 'Parlement', 'Régional', 'Local', 'Européen']
 
@@ -127,9 +128,24 @@ export default function NewPoliticianPage() {
           </div>
           <div className="col-span-2">
             <label className={labelClass}>URL photo officielle</label>
-            <input className={inputClass} value={form.photo_url}
-              onChange={e => set('photo_url', e.target.value)}
-              placeholder="https://..." />
+            <div className="flex gap-4 items-start">
+              <input className={inputClass} value={form.photo_url}
+                onChange={e => set('photo_url', e.target.value)}
+                placeholder="https://..." />
+              <div className="shrink-0">
+                <PoliticianPhoto
+                  src={form.photo_url}
+                  name={form.full_name || '??'}
+                  className="w-20 h-20 rounded-xl border-2 border-gray-200"
+                  initialsFontSize="1.5rem"
+                />
+              </div>
+            </div>
+            {form.photo_url && (
+              <p className="text-xs text-gray-400 mt-1">
+                Si tu vois les initiales à droite, l'URL ne charge pas.
+              </p>
+            )}
           </div>
         </div>
         {error && (

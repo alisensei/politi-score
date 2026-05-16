@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { PoliticianFull, Grade } from '@politi-score/types'
 import { GRADE_COLORS, GRADE_LABELS, SCORE_LABELS } from '@politi-score/types'
 import { getPoliticianBySlug } from '@/lib/politicians'
+import PoliticianPhoto from './PoliticianPhoto'
 
 function GradeBadge({ grade }: { grade: Grade }) {
   return (
@@ -117,15 +118,12 @@ export default function PoliticianModal({ slug, onClose }: { slug: string; onClo
             {/* Header */}
             <div className="flex">
               <div className="w-44 shrink-0 bg-gray-100 min-h-52">
-                {politician.photo_url ? (
-                  <img src={politician.photo_url} alt={politician.full_name} className="w-full h-full object-cover object-top" />
-                ) : (
-                  <div className="w-full h-full min-h-52 flex items-center justify-center">
-                    <span className="text-5xl font-black text-gray-300" style={{ fontFamily: 'var(--font-barlow-condensed)' }}>
-                      {politician.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                    </span>
-                  </div>
-                )}
+                <PoliticianPhoto
+                  src={politician.photo_url}
+                  name={politician.full_name}
+                  className="w-full h-full min-h-52"
+                  initialsFontSize="3rem"
+                />
               </div>
               <div className="flex-1 p-6 flex flex-col justify-end bg-gradient-to-r from-gray-50 to-white">
                 <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">{politician.party} · {politician.level}</div>
