@@ -116,11 +116,19 @@ export default function WikipediaImport({
         throw new Error(`Réponse non-JSON (HTTP ${res.status}) : ${text.slice(0, 200)}`)
       }
       if (!res.ok) throw new Error(data.error || `Erreur HTTP ${res.status}`)
-      const proposed = (data.items ?? []) as ProposedItem[]
+      const raw = (data.items ?? []) as ProposedItem[]
+      const proposed = raw.map((item) => ({
+        ...item,
+        sources: Array.isArray(item.sources) ? item.sources : [],
+      }))
+      const withSource = proposed.filter((it) => it.sources.length > 0)
+      const withoutSource = proposed.length - withSource.length
       setItems(proposed)
-      setSelected(new Set(proposed.map((_, i) => i)))
+      setSelected(new Set(proposed.map((it, i) => (it.sources.length > 0 ? i : -1)).filter((i) => i >= 0)))
       if (proposed.length === 0) {
-        setError('Aucun fait documenté détecté dans l\'article.')
+        setError("Aucun fait documenté détecté dans l'article.")
+      } else if (withoutSource > 0) {
+        setError(`${withoutSource} entrée(s) ignorée(s) car sans source. Ajoute une URL pour les activer.`)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -130,8 +138,14 @@ export default function WikipediaImport({
   }
 
   const handleImport = async () => {
-    const toImport = Array.from(selected).sort((a, b) => a - b).map((i) => items[i])
-    if (toImport.length === 0) return
+    const toImport = Array.from(selected)
+      .sort((a, b) => a - b)
+      .map((i) => items[i])
+      .filter((it) => it.sources.length > 0)
+    if (toImport.length === 0) {
+      setError('Aucune entrée sélectionnée avec source.')
+      return
+    }
     setImporting(true)
     setError('')
     setProgress({ done: 0, total: toImport.length, failed: 0 })
@@ -139,15 +153,16 @@ export default function WikipediaImport({
     let failed = 0
     for (let i = 0; i < toImport.length; i++) {
       const item = toImport[i]
+      const src = item.sources[0]
       const { error: err } = await addFact({
         table: item.category,
         slug,
         payload: buildPayload(item, politicianId),
         source: {
-          label: item.sources[0].label,
-          url: item.sources[0].url,
-          source_type: item.sources[0].source_type,
-          is_legal_doc: item.sources[0].source_type === 'legal',
+          label: src.label,
+          url: src.url,
+          source_type: src.source_type,
+          is_legal_doc: src.source_type === 'legal',
         },
       })
       if (err) failed++
@@ -280,17 +295,23 @@ export default function WikipediaImport({
                       className="w-full text-xs text-gray-600 border border-gray-200 focus:border-gray-800 outline-none rounded p-2 resize-none"
                     />
                     <div className="flex flex-wrap gap-1">
-                      {item.sources.map((s, si) => (
-                        <a
-                          key={si}
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-100"
-                        >
-                          {s.label} ({s.source_type})
-                        </a>
-                      ))}
+                      {item.sources.length === 0 ? (
+                        <span className="text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5">
+                          ⚠ Aucune source — non importable
+                        </span>
+                      ) : (
+                        item.sources.map((s, si) => (
+                          <a
+                            key={si}
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-100"
+                          >
+                            {s.label} ({s.source_type})
+                          </a>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
