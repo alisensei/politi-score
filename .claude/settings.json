@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker info *)",
+      "Bash(psql --version)",
+      "Read(//Applications/**)",
+      "Bash(brew --version)",
+      "Bash(supabase projects *)",
+      "Bash(supabase db *)",
+      "Bash(supabase migration *)"
+    ]
+  }
+}
