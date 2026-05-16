@@ -1,19 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import { createSupabaseBrowserClient } from '@/lib/supabase-client'
 import { useRouter } from 'next/navigation'
+import { addFact } from '@/app/admin/politicians/[slug]/actions'
+
+type FactTable = 'affairs' | 'lies' | 'conflicts' | 'patrimoine' | 'financement'
 
 interface Props {
   politicianId: string
-  table: string
+  table: FactTable
   severities: string[]
   slug: string
 }
 
 export default function AddFactForm({ politicianId, table, severities, slug }: Props) {
   const router = useRouter()
-  const supabase = createSupabaseBrowserClient()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -34,7 +35,7 @@ export default function AddFactForm({ politicianId, table, severities, slug }: P
     setSaving(true)
     setError('')
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       politician_id: politicianId,
       title: form.title,
       severity: form.severity,
@@ -58,20 +59,19 @@ export default function AddFactForm({ politicianId, table, severities, slug }: P
       payload.description = form.description
     }
 
-    const { data: inserted, error: err } = await supabase
-      .from(table).insert(payload).select().single()
-
-    if (err) { setError(err.message); setSaving(false); return }
-
-    await supabase.from('sources').insert({
-      linked_id: inserted.id,
-      linked_type: table === 'affairs' ? 'affair' : table === 'lies' ? 'lie' : table === 'conflicts' ? 'conflict' : table,
-      label: form.source_label,
-      url: form.source_url,
-      source_type: form.source_type,
-      is_legal_doc: form.source_type === 'legal',
-      is_verified: true,
+    const { error: err } = await addFact({
+      table,
+      slug,
+      payload,
+      source: {
+        label: form.source_label,
+        url: form.source_url,
+        source_type: form.source_type,
+        is_legal_doc: form.source_type === 'legal',
+      },
     })
+
+    if (err) { setError(err); setSaving(false); return }
 
     setOpen(false)
     setSaving(false)

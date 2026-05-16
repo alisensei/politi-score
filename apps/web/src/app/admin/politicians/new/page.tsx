@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { createSupabaseBrowserClient } from '@/lib/supabase-client'
 import { useRouter } from 'next/navigation'
 import WikidataSearch, { type WikidataPrefill } from '@/components/admin/WikidataSearch'
 import PoliticianPhoto from '@/components/PoliticianPhoto'
+import { createPolitician } from '../actions'
 
 const LEVELS = ['Gouvernement', 'Parlement', 'Régional', 'Local', 'Européen']
 
@@ -17,7 +17,6 @@ function slugify(str: string) {
 
 export default function NewPoliticianPage() {
   const router = useRouter()
-  const supabase = createSupabaseBrowserClient()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
@@ -46,26 +45,17 @@ export default function NewPoliticianPage() {
     }
     setSaving(true)
     setError('')
-    const slug = slugify(form.full_name)
-    const { error: err } = await supabase.from('politicians').insert({
-      slug,
+    const { error: err } = await createPolitician({
       full_name: form.full_name,
       party: form.party,
       role: form.role,
       level: form.level,
       mandate_start: form.mandate_start,
-      mandate_end: form.mandate_end || null,
-      photo_url: form.photo_url || null,
-      status: 'active',
+      mandate_end: form.mandate_end || undefined,
+      photo_url: form.photo_url || undefined,
     })
     if (err) {
-      if (err.code === '23505') {
-        setError(`Un élu avec ce nom existe déjà (slug : ${slug}). Ouvre /admin/politicians/${slug} pour le gérer.`)
-      } else if (err.code === '42501') {
-        setError("Tu n'as pas les droits pour ajouter un élu (rôle moderator/admin requis).")
-      } else {
-        setError(err.message)
-      }
+      setError(err)
       setSaving(false)
       return
     }

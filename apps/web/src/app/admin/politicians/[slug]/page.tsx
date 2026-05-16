@@ -28,11 +28,11 @@ export default async function AdminPoliticianPage({ params }: { params: Promise<
   ])
 
   const sections = [
-    { key: 'affairs', label: 'Affaires & Corruption', grade: politician.grade_corruption, score: politician.score_corruption, items: affairs.data ?? [], severities: ['condamne','mis_en_examen','inculpe','soupcon','classe'] },
-    { key: 'lies', label: 'Mensonges', grade: politician.grade_lies, score: politician.score_lies, items: lies.data ?? [], severities: ['avere','etabli','probable','nuance'] },
-    { key: 'conflicts', label: "Conflits d'intérêts", grade: politician.grade_conflicts, score: politician.score_conflicts, items: conflicts.data ?? [], severities: ['avere','soupcon','potentiel'] },
-    { key: 'patrimoine', label: 'Transparence patrimoniale', grade: politician.grade_patrimoine, score: politician.score_patrimoine, items: patrimoine.data ?? [], severities: ['omission_volontaire','declaration_incomplete','retard'] },
-    { key: 'financement', label: 'Financement politique', grade: politician.grade_financement, score: politician.score_financement, items: financement.data ?? [], severities: ['condamnation_cnccfp','irregularite_constatee','anomalie_signalee'] },
+    { key: 'affairs' as const, label: 'Affaires & Corruption', grade: politician.grade_corruption, score: politician.score_corruption, items: affairs.data ?? [], severities: ['condamne','mis_en_examen','inculpe','soupcon','classe'] },
+    { key: 'lies' as const, label: 'Mensonges', grade: politician.grade_lies, score: politician.score_lies, items: lies.data ?? [], severities: ['avere','etabli','probable','nuance'] },
+    { key: 'conflicts' as const, label: "Conflits d'intérêts", grade: politician.grade_conflicts, score: politician.score_conflicts, items: conflicts.data ?? [], severities: ['avere','soupcon','potentiel'] },
+    { key: 'patrimoine' as const, label: 'Transparence patrimoniale', grade: politician.grade_patrimoine, score: politician.score_patrimoine, items: patrimoine.data ?? [], severities: ['omission_volontaire','declaration_incomplete','retard'] },
+    { key: 'financement' as const, label: 'Financement politique', grade: politician.grade_financement, score: politician.score_financement, items: financement.data ?? [], severities: ['condamnation_cnccfp','irregularite_constatee','anomalie_signalee'] },
   ]
 
   return (

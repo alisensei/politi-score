@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createSupabaseBrowserClient } from '@/lib/supabase-client'
+import { deletePolitician } from '@/app/admin/politicians/actions'
 
 export default function DeletePoliticianButton({
   politicianId,
@@ -12,7 +12,6 @@ export default function DeletePoliticianButton({
   fullName: string
 }) {
   const router = useRouter()
-  const supabase = createSupabaseBrowserClient()
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
 
@@ -24,23 +23,15 @@ export default function DeletePoliticianButton({
 
     setDeleting(true)
     setError('')
-    const { error: err } = await supabase
-      .from('politicians')
-      .delete()
-      .eq('id', politicianId)
+    const { error: err } = await deletePolitician(politicianId)
 
     if (err) {
-      if (err.code === '42501') {
-        setError("Droits insuffisants (moderator/admin requis).")
-      } else {
-        setError(err.message)
-      }
+      setError(err)
       setDeleting(false)
       return
     }
 
     router.push('/admin/politicians')
-    router.refresh()
   }
 
   return (
