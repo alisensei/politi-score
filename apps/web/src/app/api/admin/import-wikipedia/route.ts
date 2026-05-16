@@ -112,21 +112,29 @@ async function fetchWikipediaArticle(slug: string): Promise<string | null> {
 }
 
 function trimToInterestingSections(wikitext: string): string {
+  // Cap total input to ~40k chars (~10k tokens) to fit Vercel Hobby 10s timeout.
+  const PER_SECTION = 8000
+  const MAX_TOTAL = 40000
+
   const sectionRegex = /==+\s*(Affaires?|Controverses?|Pol[ée]miques?|Proc[ée]dures? judiciaires?|Mises? en cause|Critiques?|Mensonges?|Scandales?|Affaires? judiciaires?)[^=]*==+/gi
   const matches: { start: number }[] = []
   let m
   while ((m = sectionRegex.exec(wikitext)) !== null) matches.push({ start: m.index })
 
   if (matches.length === 0) {
-    return wikitext.slice(0, 120000)
+    return wikitext.slice(0, MAX_TOTAL)
   }
 
   const chunks: string[] = []
+  let total = 0
   for (const { start } of matches) {
-    chunks.push(wikitext.slice(start, start + 30000))
+    const remaining = MAX_TOTAL - total
+    if (remaining <= 0) break
+    const chunk = wikitext.slice(start, start + Math.min(PER_SECTION, remaining))
+    chunks.push(chunk)
+    total += chunk.length
   }
-  const combined = chunks.join('\n\n---\n\n')
-  return combined.slice(0, 150000)
+  return chunks.join('\n\n---\n\n')
 }
 
 export async function POST(request: Request) {
