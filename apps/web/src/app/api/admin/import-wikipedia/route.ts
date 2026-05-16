@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { GoogleGenAI, Type, FunctionCallingConfigMode } from '@google/genai'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export const runtime = 'nodejs'
@@ -42,29 +41,29 @@ const EXTRACTION_FUNCTION = {
   name: 'submit_extraction',
   description: 'Soumet la liste des faits extraits depuis le wikitext.',
   parameters: {
-    type: Type.OBJECT,
+    type: 'object',
     properties: {
       items: {
-        type: Type.ARRAY,
+        type: 'array',
         items: {
-          type: Type.OBJECT,
+          type: 'object',
           properties: {
             category: {
-              type: Type.STRING,
+              type: 'string',
               enum: ['affairs', 'lies', 'conflicts', 'patrimoine', 'financement'],
             },
-            title: { type: Type.STRING },
-            description: { type: Type.STRING },
-            severity: { type: Type.STRING },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            severity: { type: 'string' },
             sources: {
-              type: Type.ARRAY,
+              type: 'array',
               items: {
-                type: Type.OBJECT,
+                type: 'object',
                 properties: {
-                  label: { type: Type.STRING },
-                  url: { type: Type.STRING },
+                  label: { type: 'string' },
+                  url: { type: 'string' },
                   source_type: {
-                    type: Type.STRING,
+                    type: 'string',
                     enum: ['presse', 'legal', 'officiel', 'hatvp', 'parquet', 'autre'],
                   },
                 },
@@ -78,6 +77,55 @@ const EXTRACTION_FUNCTION = {
     },
     required: ['items'],
   },
+}
+
+interface GeminiFunctionCall {
+  name: string
+  args: Record<string, unknown>
+}
+
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        functionCall?: GeminiFunctionCall
+        text?: string
+      }>
+    }
+  }>
+  usageMetadata?: Record<string, unknown>
+  error?: { code: number; message: string; status: string }
+}
+
+async function callGeminiFlash(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  signal: AbortSignal
+): Promise<GeminiResponse> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
+  const body = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    tools: [{ functionDeclarations: [EXTRACTION_FUNCTION] }],
+    toolConfig: {
+      functionCallingConfig: {
+        mode: 'ANY',
+        allowedFunctionNames: ['submit_extraction'],
+      },
+    },
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  })
+  const json = (await res.json()) as GeminiResponse
+  if (!res.ok || json.error) {
+    throw new Error(json.error?.message || `HTTP ${res.status}`)
+  }
+  return json
 }
 
 async function assertModerator() {
@@ -179,44 +227,44 @@ export async function POST(request: Request) {
     const trimmed = trimToInterestingSections(wikitext)
     stamp(`trim (chars=${trimmed.length})`)
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+    const userPrompt = `Voici le wikitext (sections pertinentes uniquement). Extrais les faits documentés via la fonction submit_extraction.\n\n${trimmed}`
 
-    let response
+    let response: GeminiResponse
     try {
       stamp('gemini call start')
-      response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Voici le wikitext (sections pertinentes uniquement). Extrais les faits documentés via la fonction submit_extraction.\n\n${trimmed}`,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          tools: [{ functionDeclarations: [EXTRACTION_FUNCTION] }],
-          toolConfig: {
-            functionCallingConfig: {
-              mode: FunctionCallingConfigMode.ANY,
-              allowedFunctionNames: ['submit_extraction'],
-            },
-          },
-        },
-      })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 50000)
+      try {
+        response = await callGeminiFlash(
+          process.env.GEMINI_API_KEY,
+          SYSTEM_PROMPT,
+          userPrompt,
+          controller.signal
+        )
+      } finally {
+        clearTimeout(timeoutId)
+      }
     } catch (err) {
-      const e = err as { status?: number; message?: string }
+      const e = err as { message?: string }
       stamp(`gemini error: ${e.message}`)
       return NextResponse.json(
-        { error: `Gemini API: ${e.message || 'erreur inconnue'}`, status: e.status },
+        { error: `Gemini API: ${e.message || 'erreur inconnue'}` },
         { status: 502 }
       )
     }
     stamp('gemini call done')
 
-    const calls = response.functionCalls
-    if (!calls || calls.length === 0) {
+    const parts = response.candidates?.[0]?.content?.parts ?? []
+    const fnCall = parts.find((p) => p.functionCall)?.functionCall
+    if (!fnCall) {
+      const text = parts.map((p) => p.text).filter(Boolean).join('\n')
       return NextResponse.json(
-        { error: 'Réponse LLM sans function call', raw: response.text ?? null },
+        { error: 'Réponse LLM sans function call', raw: text || null },
         { status: 500 }
       )
     }
 
-    const args = calls[0].args as { items: unknown[] }
+    const args = fnCall.args as { items: unknown[] }
     return NextResponse.json({
       items: args.items,
       usage: response.usageMetadata,
