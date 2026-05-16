@@ -45,8 +45,9 @@ export default function NewPoliticianPage() {
     }
     setSaving(true)
     setError('')
+    const slug = slugify(form.full_name)
     const { error: err } = await supabase.from('politicians').insert({
-      slug: slugify(form.full_name),
+      slug,
       full_name: form.full_name,
       party: form.party,
       role: form.role,
@@ -56,7 +57,17 @@ export default function NewPoliticianPage() {
       photo_url: form.photo_url || null,
       status: 'active',
     })
-    if (err) { setError(err.message); setSaving(false); return }
+    if (err) {
+      if (err.code === '23505') {
+        setError(`Un élu avec ce nom existe déjà (slug : ${slug}). Ouvre /admin/politicians/${slug} pour le gérer.`)
+      } else if (err.code === '42501') {
+        setError("Tu n'as pas les droits pour ajouter un élu (rôle moderator/admin requis).")
+      } else {
+        setError(err.message)
+      }
+      setSaving(false)
+      return
+    }
     router.push('/admin/politicians')
   }
 
