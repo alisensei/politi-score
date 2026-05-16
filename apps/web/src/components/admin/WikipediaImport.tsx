@@ -104,8 +104,18 @@ export default function WikipediaImport({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wikipediaSlug }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erreur inconnue')
+      const text = await res.text()
+      if (!text) {
+        if (res.status === 504) throw new Error('Timeout serveur (Vercel a coupé). Essaie un slug plus court ou upgrade le plan.')
+        throw new Error(`Réponse vide (HTTP ${res.status}). Vérifie les logs Vercel Functions.`)
+      }
+      let data: { items?: unknown[]; error?: string }
+      try {
+        data = JSON.parse(text)
+      } catch {
+        throw new Error(`Réponse non-JSON (HTTP ${res.status}) : ${text.slice(0, 200)}`)
+      }
+      if (!res.ok) throw new Error(data.error || `Erreur HTTP ${res.status}`)
       const proposed = (data.items ?? []) as ProposedItem[]
       setItems(proposed)
       setSelected(new Set(proposed.map((_, i) => i)))

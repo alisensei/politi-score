@@ -127,68 +127,88 @@ function trimToInterestingSections(wikitext: string): string {
 }
 
 export async function POST(request: Request) {
-  const auth = await assertModerator()
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY manquante côté serveur.' },
-      { status: 500 }
-    )
-  }
-
-  let body: { wikipediaSlug?: string }
   try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Body JSON invalide' }, { status: 400 })
-  }
+    const auth = await assertModerator()
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
 
-  const wikipediaSlug = body.wikipediaSlug?.trim()
-  if (!wikipediaSlug) {
-    return NextResponse.json({ error: 'wikipediaSlug requis' }, { status: 400 })
-  }
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json(
+        { error: 'ANTHROPIC_API_KEY manquante côté serveur.' },
+        { status: 500 }
+      )
+    }
 
-  const wikitext = await fetchWikipediaArticle(wikipediaSlug)
-  if (!wikitext) {
+    let body: { wikipediaSlug?: string }
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Body JSON invalide' }, { status: 400 })
+    }
+
+    const wikipediaSlug = body.wikipediaSlug?.trim()
+    if (!wikipediaSlug) {
+      return NextResponse.json({ error: 'wikipediaSlug requis' }, { status: 400 })
+    }
+
+    const wikitext = await fetchWikipediaArticle(wikipediaSlug)
+    if (!wikitext) {
+      return NextResponse.json(
+        { error: `Article Wikipedia introuvable : « ${wikipediaSlug} »` },
+        { status: 404 }
+      )
+    }
+
+    const trimmed = trimToInterestingSections(wikitext)
+
+    const anthropic = new Anthropic()
+    let message
+    try {
+      message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system: [
+          { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+        ],
+        tools: [EXTRACTION_TOOL],
+        tool_choice: { type: 'tool', name: 'submit_extraction' },
+        messages: [
+          {
+            role: 'user',
+            content: `Voici le wikitext (sections potentiellement pertinentes uniquement). Extrais les faits documentés via la fonction submit_extraction.\n\n${trimmed}`,
+          },
+        ],
+      })
+    } catch (err) {
+      const e = err as { status?: number; message?: string; error?: { message?: string } }
+      return NextResponse.json(
+        {
+          error: `Anthropic API: ${e.error?.message || e.message || 'erreur inconnue'}`,
+          status: e.status,
+        },
+        { status: 502 }
+      )
+    }
+
+    const toolUse = message.content.find((b) => b.type === 'tool_use')
+    if (!toolUse || toolUse.type !== 'tool_use') {
+      return NextResponse.json(
+        { error: 'Réponse LLM sans tool_use', raw: message.content },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      items: (toolUse.input as { items: unknown[] }).items,
+      usage: message.usage,
+      wikipediaSlug,
+    })
+  } catch (err) {
+    const e = err as Error
     return NextResponse.json(
-      { error: `Article Wikipedia introuvable : « ${wikipediaSlug} »` },
-      { status: 404 }
-    )
-  }
-
-  const trimmed = trimToInterestingSections(wikitext)
-
-  const anthropic = new Anthropic()
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-    ],
-    tools: [EXTRACTION_TOOL],
-    tool_choice: { type: 'tool', name: 'submit_extraction' },
-    messages: [
-      {
-        role: 'user',
-        content: `Voici le wikitext (sections potentiellement pertinentes uniquement). Extrais les faits documentés via la fonction submit_extraction.\n\n${trimmed}`,
-      },
-    ],
-  })
-
-  const toolUse = message.content.find((b) => b.type === 'tool_use')
-  if (!toolUse || toolUse.type !== 'tool_use') {
-    return NextResponse.json(
-      { error: 'Réponse LLM sans tool_use', raw: message.content },
+      { error: `Erreur serveur : ${e.message}`, stack: e.stack?.split('\n').slice(0, 5) },
       { status: 500 }
     )
   }
-
-  return NextResponse.json({
-    items: (toolUse.input as { items: unknown[] }).items,
-    usage: message.usage,
-    wikipediaSlug,
-  })
 }
