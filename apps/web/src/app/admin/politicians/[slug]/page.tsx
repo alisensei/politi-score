@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { notFound } from 'next/navigation'
 import AddFactForm from '@/components/admin/AddFactForm'
 import DeletePoliticianButton from '@/components/admin/DeletePoliticianButton'
+import WikipediaImport from '@/components/admin/WikipediaImport'
 
 const GRADE_COLORS: Record<string, string> = {
   A: '#038141', B: '#85BB2F', C: '#FECB02', D: '#EE8100', E: '#E63312'
@@ -65,7 +66,12 @@ export default async function AdminPoliticianPage({ params }: { params: Promise<
         </div>
       </div>
 
-      <div className="flex justify-end mb-8">
+      <div className="flex justify-end gap-3 mb-8">
+        <WikipediaImport
+          politicianId={politician.politician_id}
+          slug={slug}
+          fullName={politician.full_name}
+        />
         <DeletePoliticianButton politicianId={politician.politician_id} fullName={politician.full_name} />
       </div>
 
