@@ -379,12 +379,12 @@ select
     when round(vpr.score*0.25 + vha.score*0.25 + vci.score*0.15 + vop.score*0.15 + vsi.score*0.10 + vse.score*0.10) >= 20 then 'D'
     else 'E'
   end as grade_general,
-  score_to_grade(vpr.score) as grade_probity,
-  score_to_grade(vci.score) as grade_conflicts,
-  score_to_grade(vop.score) as grade_opacity,
-  score_to_grade(vsi.score) as grade_sincerity,
-  score_to_grade(vha.score) as grade_harm,
-  score_to_grade(vse.score) as grade_speech_offenses
+  score_to_grade(vpr.score::integer) as grade_probity,
+  score_to_grade(vci.score::integer) as grade_conflicts,
+  score_to_grade(vop.score::integer) as grade_opacity,
+  score_to_grade(vsi.score::integer) as grade_sincerity,
+  score_to_grade(vha.score::integer) as grade_harm,
+  score_to_grade(vse.score::integer) as grade_speech_offenses
 from politicians p
 join v_score_probity         vpr on vpr.politician_id = p.id
 join v_score_conflicts       vci on vci.politician_id = p.id
