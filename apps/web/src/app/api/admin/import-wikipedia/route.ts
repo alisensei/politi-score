@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { GoogleGenAI, Type, FunctionCallingConfigMode } from '@google/genai'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
-export const runtime = 'edge'
-export const maxDuration = 30
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 const SYSTEM_PROMPT = `Tu es un analyste politique qui extrait des faits documentés depuis un article Wikipedia FR sur un politicien français.
 
@@ -112,9 +112,9 @@ async function fetchWikipediaArticle(slug: string): Promise<string | null> {
 }
 
 function trimToInterestingSections(wikitext: string): string {
-  // Cap total input to ~80k chars (~20k tokens) — Edge runtime gives us 30s.
-  const PER_SECTION = 16000
-  const MAX_TOTAL = 80000
+  // Cap total input to ~120k chars (~30k tokens) — Node + Fluid Compute gives 60s.
+  const PER_SECTION = 24000
+  const MAX_TOTAL = 120000
 
   const sectionRegex = /==+\s*(Affaires?|Controverses?|Pol[ée]miques?|Proc[ée]dures? judiciaires?|Mises? en cause|Critiques?|Mensonges?|Scandales?|Affaires? judiciaires?)[^=]*==+/gi
   const matches: { start: number }[] = []
