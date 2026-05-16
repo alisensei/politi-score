@@ -114,6 +114,9 @@ async function callGeminiFlash(
         allowedFunctionNames: ['submit_extraction'],
       },
     },
+    generationConfig: {
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   }
   const res = await fetch(url, {
     method: 'POST',
