@@ -1,5 +1,11 @@
 import { supabase } from './supabase'
-import type { PoliticianWithScores, PoliticianFull, Source } from '@politi-score/types'
+import type {
+  PoliticianWithScores,
+  PoliticianFull,
+  Source,
+  FactTable,
+} from '@politi-score/types'
+import { LINKED_TYPE_BY_TABLE } from '@politi-score/types'
 
 export async function getAllPoliticians(): Promise<PoliticianWithScores[]> {
   const { data, error } = await supabase
@@ -9,16 +15,6 @@ export async function getAllPoliticians(): Promise<PoliticianWithScores[]> {
 
   if (error) throw error
   return data ?? []
-}
-
-type FactTable = 'affairs' | 'lies' | 'conflicts' | 'patrimoine' | 'financement'
-
-const LINKED_TYPE_BY_TABLE: Record<FactTable, Source['linked_type']> = {
-  affairs: 'affair',
-  lies: 'lie',
-  conflicts: 'conflict',
-  patrimoine: 'patrimoine',
-  financement: 'financement',
 }
 
 async function fetchFactsWithSources<T extends { id: string }>(
@@ -62,20 +58,22 @@ export async function getPoliticianBySlug(slug: string): Promise<PoliticianFull 
 
   if (error || !scores) return null
 
-  const [affairs, lies, conflicts, patrimoine, financement] = await Promise.all([
-    fetchFactsWithSources('affairs', scores.politician_id),
-    fetchFactsWithSources('lies', scores.politician_id),
+  const [probity, conflicts, opacity, sincerity, harm, speech_offenses] = await Promise.all([
+    fetchFactsWithSources('probity', scores.politician_id),
     fetchFactsWithSources('conflicts', scores.politician_id),
-    fetchFactsWithSources('patrimoine', scores.politician_id),
-    fetchFactsWithSources('financement', scores.politician_id),
+    fetchFactsWithSources('opacity', scores.politician_id),
+    fetchFactsWithSources('sincerity', scores.politician_id),
+    fetchFactsWithSources('harm', scores.politician_id),
+    fetchFactsWithSources('speech_offenses', scores.politician_id),
   ])
 
   return {
     ...scores,
-    affairs: affairs as PoliticianFull['affairs'],
-    lies: lies as PoliticianFull['lies'],
+    probity: probity as PoliticianFull['probity'],
     conflicts: conflicts as PoliticianFull['conflicts'],
-    patrimoine: patrimoine as PoliticianFull['patrimoine'],
-    financement: financement as PoliticianFull['financement'],
+    opacity: opacity as PoliticianFull['opacity'],
+    sincerity: sincerity as PoliticianFull['sincerity'],
+    harm: harm as PoliticianFull['harm'],
+    speech_offenses: speech_offenses as PoliticianFull['speech_offenses'],
   }
 }

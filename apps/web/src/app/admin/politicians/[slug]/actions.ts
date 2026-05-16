@@ -2,20 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
-
-type FactTable = 'affairs' | 'lies' | 'conflicts' | 'patrimoine' | 'financement'
-
-const LINKED_TYPE_MAP: Record<FactTable, string> = {
-  affairs: 'affair',
-  lies: 'lie',
-  conflicts: 'conflict',
-  patrimoine: 'patrimoine',
-  financement: 'financement',
-}
+import type { FactTable } from '@politi-score/types'
+import { LINKED_TYPE_BY_TABLE } from '@politi-score/types'
 
 function mapPgError(err: { code?: string; message: string }): string {
   if (err.code === '42501') return "Droits insuffisants (moderator/admin requis)."
-  if (err.code === '23514') return "Donnée invalide (vérifie sévérité / type de conflit)."
+  if (err.code === '23514') return "Donnée invalide (vérifie sévérité)."
   return err.message
 }
 
@@ -44,7 +36,7 @@ export async function addFact(input: AddFactInput): Promise<{ error?: string }> 
 
   const { error: sourceError } = await supabase.from('sources').insert({
     linked_id: inserted.id,
-    linked_type: LINKED_TYPE_MAP[input.table],
+    linked_type: LINKED_TYPE_BY_TABLE[input.table],
     label: input.source.label,
     url: input.source.url,
     source_type: input.source.source_type,

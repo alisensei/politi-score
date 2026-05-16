@@ -6,21 +6,23 @@ export const maxDuration = 60
 
 const SYSTEM_PROMPT = `Tu es un analyste politique qui extrait des faits documentés depuis un article Wikipedia FR sur un politicien français.
 
-OBJECTIF : produire une liste de faits classés en 5 catégories, chacun avec au moins une source extraite du wikitext fourni.
+OBJECTIF : produire une liste de faits classés en 6 catégories éthiques, chacun avec au moins une source extraite du wikitext fourni.
 
-CATÉGORIES :
-- "affairs" : affaires judiciaires (condamnations, mises en examen, inculpations, soupçons documentés, affaires classées)
-- "lies" : mensonges ou inexactitudes factuels établis par fact-check
-- "conflicts" : conflits d'intérêts (déclarés ou non à la HATVP)
-- "patrimoine" : problèmes de déclaration patrimoniale HATVP
-- "financement" : irrégularités de financement politique CNCCFP
+CATÉGORIES (en français, slug technique entre parenthèses) :
+- "probity" — Probité : enrichissement personnel illégal (corruption, abus de biens sociaux, blanchiment, fraude fiscale aggravée, détournement de fonds)
+- "conflicts" — Conflits d'intérêts : liens d'affaires, doubles casquettes, famille placée, activités annexes problématiques
+- "opacity" — Opacité financière : manquements aux obligations déclaratives (HATVP patrimoine, CNCCFP comptes de campagne, lobbying caché, déclarations d'intérêts incomplètes)
+- "sincerity" — Sincérité : mensonges et inexactitudes factuels documentés (différent du non-respect de promesses politiques)
+- "harm" — Atteintes aux personnes : violences sexuelles, violences physiques, harcèlement, agressions, discriminations actives, abus de pouvoir contre des personnes
+- "speech_offenses" — Délits d'expression : injures publiques, diffamation, provocation à la haine, négationnisme, outrages
 
-SÉVÉRITÉS AUTORISÉES (impératif) :
-- affairs : condamne | mis_en_examen | inculpe | soupcon | classe
-- lies : avere | etabli | probable | nuance
-- conflicts : avere | soupcon | potentiel
-- patrimoine : omission_volontaire | declaration_incomplete | retard
-- financement : condamnation_cnccfp | irregularite_constatee | anomalie_signalee
+SÉVÉRITÉS AUTORISÉES (impératif, choisis la moins grave en cas de doute) :
+- probity : condamnation_definitive | condamnation_premiere_instance | mise_en_examen | enquete_judiciaire | soupcons_documentes
+- conflicts : non_declare_etabli | partiellement_declare | declare_problematique | potentiel
+- opacity : omission_volontaire | declaration_incomplete | irregularite_constatee | retard_anomalie
+- sincerity : mensonge_repete | mensonge_etabli | inexactitude_etablie | approximation
+- harm : condamnation_violences_sexuelles | condamnation_violences | mise_en_examen_violences | accusations_documentees | signalements_publics
+- speech_offenses : condamnation_provocation_haine | condamnation_injure_diffamation | condamnation_outrage | polemique_documentee
 
 source_type AUTORISÉS : presse | legal | officiel | hatvp | parquet | autre
 
@@ -28,11 +30,11 @@ RÈGLES STRICTES :
 1. N'invente JAMAIS un fait ou une URL. Si tu n'es pas sûr, n'inclus pas l'item.
 2. Chaque fait doit s'appuyer sur au moins une référence <ref>...</ref> trouvée dans le wikitext. Extrais l'URL et le nom de la source depuis le <ref>.
 3. Paraphrase factuellement. Ne copie pas verbatim (Wikipedia est CC-BY-SA).
-4. Le titre est court (max 80 caractères), neutre, factuel ("Affaire Benalla", "Mensonge sur le pouvoir d'achat 2022").
+4. Le titre est court (max 80 caractères), neutre, factuel.
 5. La description fait 1 à 3 phrases neutres.
 6. En cas de doute sur la sévérité, choisis la moins grave (présomption d'innocence).
-7. Une affaire sans condamnation définitive ne peut PAS être tagguée "condamne" — utilise "mis_en_examen" ou "soupcon".
-8. Concentre-toi sur les sections "Affaires", "Controverses", "Polémiques", "Procédures judiciaires", "Polémiques judiciaires", "Critiques", "Mises en cause", "Mensonges". Ignore biographie/carrière/déclarations politiques générales.
+7. Pour la catégorie : choisis la PLUS PRÉCISE. Une condamnation pour injure publique = "speech_offenses", PAS "probity". Une fraude fiscale = "probity", PAS "opacity". Un patrimoine non déclaré = "opacity". Un mensonge sur un chiffre économique = "sincerity". Une accusation de harcèlement sexuel = "harm".
+8. Concentre-toi sur les sections factuelles. Ignore les jugements politiques généraux et les positions de campagne.
 9. Si aucun fait documenté n'est trouvé, retourne items: [].
 
 Appelle toujours la fonction submit_extraction pour fournir le résultat.`
@@ -50,7 +52,7 @@ const EXTRACTION_FUNCTION = {
           properties: {
             category: {
               type: 'string',
-              enum: ['affairs', 'lies', 'conflicts', 'patrimoine', 'financement'],
+              enum: ['probity', 'conflicts', 'opacity', 'sincerity', 'harm', 'speech_offenses'],
             },
             title: { type: 'string' },
             description: { type: 'string' },
@@ -163,11 +165,10 @@ async function fetchWikipediaArticle(slug: string): Promise<string | null> {
 }
 
 function trimToInterestingSections(wikitext: string): string {
-  // Cap total input to ~30k chars to diagnose timeout. Will increase once root cause found.
   const PER_SECTION = 8000
   const MAX_TOTAL = 30000
 
-  const sectionRegex = /==+\s*(Affaires?|Controverses?|Pol[ée]miques?|Proc[ée]dures? judiciaires?|Mises? en cause|Critiques?|Mensonges?|Scandales?|Affaires? judiciaires?)[^=]*==+/gi
+  const sectionRegex = /==+\s*(Affaires?|Controverses?|Pol[ée]miques?|Proc[ée]dures? judiciaires?|Mises? en cause|Critiques?|Mensonges?|Scandales?|Affaires? judiciaires?|Harc[èe]lement|Violences?|Accusations?)[^=]*==+/gi
   const matches: { start: number }[] = []
   let m
   while ((m = sectionRegex.exec(wikitext)) !== null) matches.push({ start: m.index })

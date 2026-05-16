@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { addFact } from '@/app/admin/politicians/[slug]/actions'
-
-type FactTable = 'affairs' | 'lies' | 'conflicts' | 'patrimoine' | 'financement'
+import type { FactTable } from '@politi-score/types'
+import { AXIS_LABELS } from '@politi-score/types'
 
 interface ProposedSource {
   label: string
@@ -20,20 +20,13 @@ interface ProposedItem {
   sources: ProposedSource[]
 }
 
-const CATEGORY_LABELS: Record<FactTable, string> = {
-  affairs: 'Affaire',
-  lies: 'Mensonge',
-  conflicts: "Conflit d'intérêts",
-  patrimoine: 'Patrimoine',
-  financement: 'Financement',
-}
-
 const CATEGORY_COLORS: Record<FactTable, string> = {
-  affairs: 'bg-red-50 border-red-200 text-red-700',
-  lies: 'bg-orange-50 border-orange-200 text-orange-700',
-  conflicts: 'bg-purple-50 border-purple-200 text-purple-700',
-  patrimoine: 'bg-blue-50 border-blue-200 text-blue-700',
-  financement: 'bg-green-50 border-green-200 text-green-700',
+  probity:         'bg-red-50 border-red-200 text-red-700',
+  conflicts:       'bg-purple-50 border-purple-200 text-purple-700',
+  opacity:         'bg-blue-50 border-blue-200 text-blue-700',
+  sincerity:       'bg-orange-50 border-orange-200 text-orange-700',
+  harm:            'bg-pink-50 border-pink-200 text-pink-700',
+  speech_offenses: 'bg-yellow-50 border-yellow-200 text-yellow-700',
 }
 
 function defaultSlug(name: string): string {
@@ -47,13 +40,13 @@ function buildPayload(item: ProposedItem, politicianId: string): Record<string, 
     severity: item.severity,
     review_status: 'approved',
   }
-  if (item.category === 'lies') {
+  if (item.category === 'sincerity') {
     base.statement_original = ''
     base.statement_correction = item.description
   } else {
     base.description = item.description
   }
-  if (item.category === 'affairs') base.is_active = true
+  if (item.category === 'probity') base.is_active = true
   if (item.category === 'conflicts') {
     base.conflict_type = 'financier'
     base.declared_hatvp = false
@@ -106,8 +99,8 @@ export default function WikipediaImport({
       })
       const text = await res.text()
       if (!text) {
-        if (res.status === 504) throw new Error('Timeout serveur (Vercel a coupé). Essaie un slug plus court ou upgrade le plan.')
-        throw new Error(`Réponse vide (HTTP ${res.status}). Vérifie les logs Vercel Functions.`)
+        if (res.status === 504) throw new Error('Timeout serveur. Réessaie ou réduis le slug.')
+        throw new Error(`Réponse vide (HTTP ${res.status}).`)
       }
       let data: { items?: unknown[]; error?: string }
       try {
@@ -121,8 +114,7 @@ export default function WikipediaImport({
         ...item,
         sources: Array.isArray(item.sources) ? item.sources : [],
       }))
-      const withSource = proposed.filter((it) => it.sources.length > 0)
-      const withoutSource = proposed.length - withSource.length
+      const withoutSource = proposed.filter((it) => it.sources.length === 0).length
       setItems(proposed)
       setSelected(new Set(proposed.map((it, i) => (it.sources.length > 0 ? i : -1)).filter((i) => i >= 0)))
       if (proposed.length === 0) {
@@ -238,16 +230,13 @@ export default function WikipediaImport({
             <span>{selected.size} / {items.length} sélectionné(s)</span>
             <div className="flex gap-2">
               <button
-                onClick={() => setSelected(new Set(items.map((_, i) => i)))}
+                onClick={() => setSelected(new Set(items.map((it, i) => (it.sources.length > 0 ? i : -1)).filter((i) => i >= 0)))}
                 className="hover:text-gray-800"
               >
                 Tout
               </button>
               <span>·</span>
-              <button
-                onClick={() => setSelected(new Set())}
-                className="hover:text-gray-800"
-              >
+              <button onClick={() => setSelected(new Set())} className="hover:text-gray-800">
                 Aucun
               </button>
             </div>
@@ -266,14 +255,21 @@ export default function WikipediaImport({
                     type="checkbox"
                     checked={selected.has(idx)}
                     onChange={() => toggle(idx)}
-                    disabled={importing}
+                    disabled={importing || item.sources.length === 0}
                     className="mt-1 w-5 h-5"
                   />
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${CATEGORY_COLORS[item.category]}`}>
-                        {CATEGORY_LABELS[item.category]}
-                      </span>
+                      <select
+                        value={item.category}
+                        onChange={(e) => updateItem(idx, { category: e.target.value as FactTable })}
+                        disabled={importing}
+                        className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${CATEGORY_COLORS[item.category]}`}
+                      >
+                        {(Object.keys(AXIS_LABELS) as FactTable[]).map((t) => (
+                          <option key={t} value={t}>{AXIS_LABELS[t]}</option>
+                        ))}
+                      </select>
                       <input
                         value={item.severity}
                         onChange={(e) => updateItem(idx, { severity: e.target.value })}
