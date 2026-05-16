@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-client'
 import { useRouter } from 'next/navigation'
+import WikidataSearch, { type WikidataPrefill } from '@/components/admin/WikidataSearch'
 
 const LEVELS = ['Gouvernement', 'Parlement', 'Régional', 'Local', 'Européen']
 
@@ -24,6 +25,18 @@ export default function NewPoliticianPage() {
   })
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleWikidataSelect = (data: WikidataPrefill) => {
+    setForm(f => ({
+      ...f,
+      full_name: data.full_name || f.full_name,
+      party: data.party || f.party,
+      role: data.role || f.role,
+      mandate_start: data.mandate_start || f.mandate_start,
+      mandate_end: data.mandate_end || f.mandate_end,
+      photo_url: data.photo_url || f.photo_url,
+    }))
+  }
 
   const handleSubmit = async () => {
     if (!form.full_name || !form.party || !form.role || !form.mandate_start) {
@@ -59,6 +72,9 @@ export default function NewPoliticianPage() {
         </h1>
       </div>
       <div className="bg-white rounded-2xl border border-black/10 p-8 space-y-6">
+        <div className="pb-6 border-b border-gray-100">
+          <WikidataSearch onSelect={handleWikidataSelect} />
+        </div>
         <div className="grid grid-cols-2 gap-6">
           <div className="col-span-2">
             <label className={labelClass}>Nom complet *</label>
