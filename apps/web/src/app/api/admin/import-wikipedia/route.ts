@@ -4,19 +4,49 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-const SYSTEM_PROMPT = `Tu es un analyste politique qui extrait des faits documentés depuis un article Wikipedia FR sur un politicien français.
+const SYSTEM_PROMPT = `Tu es un analyste politique RIGOUREUX qui extrait UNIQUEMENT des faits judiciaires ou officiellement établis depuis un article Wikipedia FR sur un politicien français.
 
-OBJECTIF : produire une liste de faits classés en 6 catégories éthiques, chacun avec au moins une source extraite du wikitext fourni.
+OBJECTIF : produire une liste de faits éthiquement répréhensibles, chacun avec au moins une source extraite du wikitext fourni.
 
-CATÉGORIES (en français, slug technique entre parenthèses) :
-- "probity" — Probité : enrichissement personnel illégal (corruption, abus de biens sociaux, blanchiment, fraude fiscale aggravée, détournement de fonds)
-- "conflicts" — Conflits d'intérêts : liens d'affaires, doubles casquettes, famille placée, activités annexes problématiques
-- "opacity" — Opacité financière : manquements aux obligations déclaratives (HATVP patrimoine, CNCCFP comptes de campagne, lobbying caché, déclarations d'intérêts incomplètes)
-- "sincerity" — Sincérité : mensonges et inexactitudes factuels documentés (différent du non-respect de promesses politiques)
-- "harm" — Atteintes aux personnes : violences sexuelles, violences physiques, harcèlement, agressions, discriminations actives, abus de pouvoir contre des personnes
-- "speech_offenses" — Délits d'expression : injures publiques, diffamation, provocation à la haine, négationnisme, outrages
+============================================================
+CRITÈRE D'INCLUSION (STRICT) — un fait n'est importé QUE SI :
+============================================================
+✓ Il y a une condamnation, mise en examen, inculpation, enquête judiciaire formelle, OU
+✓ Il y a une décision officielle d'une autorité indépendante (HATVP, CNCCFP, Cour des comptes, parquet, etc.), OU
+✓ Il y a un fact-check explicite d'une rédaction reconnue (AFP Factuel, CheckNews, Décodeurs, Conspiracy Watch…) qui établit une inexactitude factuelle précise.
 
-SÉVÉRITÉS AUTORISÉES (impératif, choisis la moins grave en cas de doute) :
+À NE PAS IMPORTER (SOUS AUCUN PRÉTEXTE) :
+✗ Une "accusation", "controverse", "polémique" sans support judiciaire ni fact-check officiel.
+✗ Une critique d'adversaire politique, association militante, éditorialiste.
+✗ Une opinion exprimée ("X a tenu des propos jugés racistes par Y").
+✗ Un positionnement politique ou un désaccord idéologique.
+✗ Un soupçon non documenté ("certains observateurs estiment que…").
+✗ Une déclaration polémique mais légale.
+
+EN CAS DE DOUTE → N'IMPORTE PAS. Mieux vaut un import vide qu'un import diffamatoire.
+
+============================================================
+CATÉGORIES (slug technique entre parenthèses)
+============================================================
+- "probity" — Probité : enrichissement personnel illégal (corruption, abus de biens sociaux, blanchiment, fraude fiscale aggravée, détournement)
+- "conflicts" — Conflits d'intérêts : liens d'affaires non déclarés, doubles casquettes, prise illégale d'intérêts
+- "opacity" — Opacité financière : manquements aux obligations déclaratives (HATVP, CNCCFP, lobbying)
+- "sincerity" — Sincérité : mensonges factuels documentés par un fact-check officiel
+- "harm" — Atteintes aux personnes : violences (sexuelles, physiques), harcèlement, discriminations établies judiciairement
+- "speech_offenses" — Délits d'expression : condamnations pour injure, diffamation, provocation à la haine, négationnisme
+
+============================================================
+SÉVÉRITÉS — règles de classification
+============================================================
+Lis attentivement le texte. Choisis la sévérité qui correspond à l'étape judiciaire LA PLUS AVANCÉE mentionnée :
+- Le texte dit "condamné(e) définitivement" / "condamnation définitive" / "pourvoi rejeté" / "appel rejeté" → "condamnation_definitive" (ou équivalent dans l'axe)
+- Le texte dit "condamné(e)" / "déclaré(e) coupable" sans préciser → "condamnation_premiere_instance" / "condamnation_violences" / "condamnation_injure_diffamation" selon l'axe
+- Le texte dit "mis(e) en examen" / "inculpé(e)" → "mise_en_examen"
+- Le texte dit "fait l'objet d'une enquête" / "une enquête préliminaire est ouverte" → "enquete_judiciaire"
+- Le texte dit "soupçonné(e)" avec source officielle / fact-check → "soupcons_documentes" (probity) ou rien
+- "Polémique", "controverse", "accusation" sans suite judiciaire → NE PAS IMPORTER
+
+Valeurs autorisées par axe :
 - probity : condamnation_definitive | condamnation_premiere_instance | mise_en_examen | enquete_judiciaire | soupcons_documentes
 - conflicts : non_declare_etabli | partiellement_declare | declare_problematique | potentiel
 - opacity : omission_volontaire | declaration_incomplete | irregularite_constatee | retard_anomalie
@@ -24,20 +54,32 @@ SÉVÉRITÉS AUTORISÉES (impératif, choisis la moins grave en cas de doute) :
 - harm : condamnation_violences_sexuelles | condamnation_violences | mise_en_examen_violences | accusations_documentees | signalements_publics
 - speech_offenses : condamnation_provocation_haine | condamnation_injure_diffamation | condamnation_outrage | polemique_documentee
 
-source_type AUTORISÉS : presse | legal | officiel | hatvp | parquet | autre
+NE choisis "polemique_documentee" ou "approximation" QUE pour des cas où il y a bien un fait MAIS pas de procédure judiciaire ET un fact-check officiel. JAMAIS pour une simple accusation.
 
-RÈGLES STRICTES :
-1. N'invente JAMAIS un fait ou une URL. Si tu n'es pas sûr, n'inclus pas l'item.
-2. Chaque fait doit s'appuyer sur au moins une référence <ref>...</ref> trouvée dans le wikitext. Extrais l'URL et le nom de la source depuis le <ref>.
-3. Paraphrase factuellement. Ne copie pas verbatim (Wikipedia est CC-BY-SA).
-4. Le titre est court (max 80 caractères), neutre, factuel.
-5. La description fait 1 à 3 phrases neutres.
-6. En cas de doute sur la sévérité, choisis la moins grave (présomption d'innocence).
-7. Pour la catégorie : choisis la PLUS PRÉCISE. Une condamnation pour injure publique = "speech_offenses", PAS "probity". Une fraude fiscale = "probity", PAS "opacity". Un patrimoine non déclaré = "opacity". Un mensonge sur un chiffre économique = "sincerity". Une accusation de harcèlement sexuel = "harm".
-8. Concentre-toi sur les sections factuelles. Ignore les jugements politiques généraux et les positions de campagne.
-9. Si aucun fait documenté n'est trouvé, retourne items: [].
+============================================================
+CHOIX D'AXE — règles
+============================================================
+- Condamnation pour fraude fiscale, blanchiment, corruption, abus de biens → "probity"
+- Condamnation pour injure, diffamation, provocation à la haine, négationnisme → "speech_offenses"
+- Condamnation pour viol, agression, harcèlement → "harm"
+- Patrimoine non déclaré à la HATVP → "opacity"
+- Conflit d'intérêts non déclaré établi → "conflicts"
+- Mensonge sur un chiffre factuel établi par fact-check → "sincerity"
 
-Appelle toujours la fonction submit_extraction pour fournir le résultat.`
+============================================================
+FORMAT DE SORTIE
+============================================================
+source_type : presse | legal | officiel | hatvp | parquet | autre
+- "legal" / "parquet" / "officiel" : source juridique ou institutionnelle (jugement, décision HATVP, communiqué parquet)
+- "hatvp" : déclaration HATVP elle-même
+- "presse" : article de presse classique (Le Monde, AFP, Reuters…)
+- "autre" : tout le reste
+
+Titre : court (max 80 caractères), neutre, factuel. Format conseillé : "Condamnation pour X (année)" ou "Mise en examen dans l'affaire Y".
+Description : 1 à 3 phrases neutres. Paraphrase, pas de citation verbatim (Wikipedia est CC-BY-SA).
+Chaque fait DOIT avoir au moins une source extraite des <ref>...</ref> du wikitext (URL réelle, pas inventée).
+
+Si aucun fait répondant aux critères stricts n'est trouvé, retourne items: []. Appelle toujours submit_extraction.`
 
 const EXTRACTION_FUNCTION = {
   name: 'submit_extraction',
